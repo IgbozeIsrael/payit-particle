@@ -1,0 +1,33 @@
+{
+  "name": "payit-particle",
+  "version": "1.0.0",
+  "description": "PayIT on Particle Network Universal Accounts and Arbitrum Sepolia",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "telegram": "node src/telegram-bot.js",
+    "test": "node scripts/test-all.js"
+  },
+  "dependencies": {
+    "@magic-sdk/admin": "^2.8.2",
+    "@openfort/openfort-node": "^0.10.8",
+    "@particle-network/auth-core": "^3.0.0-alpha.3",
+    "@particle-network/universal-account-sdk": "^1.0.0",
+    "@zerodev/permissions": "^5.6.3",
+    "@zerodev/sdk": "^5.5.10",
+    "axios": "^1.7.9",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.5",
+    "exceljs": "^3.4.0",
+    "groq-sdk": "^0.7.0",
+    "mongodb": "^7.5.0",
+    "node-telegram-bot-api": "^1.2.0",
+    "pg": "^8.22.0",
+    "sharp": "^0.35.3",
+    "solc": "^0.5.0",
+    "viem": "^2.55.4"
+  }
+}

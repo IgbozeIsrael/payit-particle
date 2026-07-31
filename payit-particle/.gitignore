@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment variables & secrets (CRITICAL: NEVER COMMIT)
+.env
+.env.*
+!.env.example
+
+# Database & local data
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.txt
+response*.json
+
+# OS files
+.DS_Store
+Thumbs.db
