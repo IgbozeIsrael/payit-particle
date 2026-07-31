@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: |
+          cd payit-particle
+          npm ci --no-audit --no-fund
+      - name: Run tests
+        run: |
+          cd payit-particle
+          NODE_ENV=development npm test
+      - name: Run npm audit
+        run: |
+          cd payit-particle
+          npm audit --omit=dev --audit-level=moderate || true

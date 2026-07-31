@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>PayIT — Native Mobile App</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: '#0F172A',
+              forest: '#047857',
+              emerald: '#10B981',
+              'emerald-light': '#5EEAB0',
+              mist: '#E5E7EB',
+              mint: '#ECFDF5',
+              slate: '#64748B',
+              danger: '#DC4C4C',
+              amber: '#F59E0B',
+            },
+            fontFamily: {
+              sans: ['Poppins', 'sans-serif'],
+            },
+            borderRadius: {
+              'xl': '26px',
+              'lg': '20px',
+              'md': '14px',
+              'sm': '10px',
+            },
+            boxShadow: {
+              'card': '0 10px 24px -12px rgba(4,120,87,0.18)',
+              'hero': '0 20px 40px -16px rgba(4,60,45,0.4)',
+              'nav': '0 16px 28px -14px rgba(4,60,45,0.55)',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+      
+      :root {
+        --ink: #0F172A;
+        --forest: #047857;
+        --emerald: #10B981;
+        --emerald-light: #5EEAB0;
+        --mist: #E5E7EB;
+        --mint: #ECFDF5;
+        --slate: #64748B;
+        --white: #FFFFFF;
+        --r-xl: 26px;
+        --r-lg: 20px;
+        --r-md: 14px;
+        --r-sm: 10px;
+        --shadow-card: 0 10px 24px -12px rgba(4,120,87,0.18);
+        --shadow-hero: 0 20px 40px -16px rgba(4,60,45,0.4);
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: 'Poppins', sans-serif;
+        background: #EEF3F0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin: 0;
+      }
+      
+      /* Folded flag mark */
+      .balance-card::before {
+        content: '';
+        position: absolute;
+        top: 0; right: 0;
+        width: 52px; height: 52px;
+        background: linear-gradient(135deg, var(--emerald-light), var(--emerald));
+        clip-path: polygon(38% 0, 100% 0, 100% 62%, 62% 100%, 38% 62%);
+        opacity: 0.9;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-Bcy-LCwd.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+# Netlify API Proxy to Railway Backend
+/api/*  https://payit-particle-payit-particle.up.railway.app/api/:splat  200!
+
+# SPA Fallback
+/*  /index.html  200
