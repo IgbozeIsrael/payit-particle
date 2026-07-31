@@ -1,7 +1,6 @@
 [build]
   builder = "DOCKERFILE"
-  dockerfilePath = "payit-particle/Dockerfile"
-  dockerfileContext = "payit-particle"
+  dockerfilePath = "Dockerfile"
   watchPaths = ["payit-particle/**"]
 
 [deploy]
