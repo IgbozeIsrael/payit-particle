@@ -251,7 +251,12 @@ export default function App() {
       {/* ── Onboarding Screens ───────────────────────────────────── */}
       {screen === 'splash' && <SplashScreen />}
       {screen === 'welcome' && <WelcomeScreen onContinue={() => setScreen('magic_link')} />}
-      {screen === 'magic_link' && <MagicLinkScreen onBack={() => setScreen('welcome')} onVerified={handleAuthSuccess} />}
+      {screen === 'magic_link' && (
+        <MagicLinkScreen 
+          onBack={() => setScreen('welcome')} 
+          onVerified={handleAuthSuccess}
+        />
+      )}
       {screen === 'account_type' && (
         <AccountTypeScreen
           selected={accountType}
