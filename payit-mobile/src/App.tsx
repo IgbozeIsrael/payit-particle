@@ -251,7 +251,7 @@ export default function App() {
       {/* ── Onboarding Screens ───────────────────────────────────── */}
       {screen === 'splash' && <SplashScreen />}
       {screen === 'welcome' && <WelcomeScreen onContinue={() => setScreen('magic_link')} />}
-{screen === 'magic_link' && <MagicLinkScreen onBack={() => setScreen('welcome')} />}
+      {screen === 'magic_link' && <MagicLinkScreen onBack={() => setScreen('welcome')} onVerified={handleAuthSuccess} />}
       {screen === 'account_type' && (
         <AccountTypeScreen
           selected={accountType}
@@ -641,10 +641,23 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function MagicLinkScreen({ onBack }: { onBack: () => void }) {
+function MagicLinkScreen({ onBack, onVerified }: { 
+  onBack: () => void; 
+  onVerified: (token: string, user: UserData) => void;
+}) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   async function handleSend() {
     const cleanEmail = email.trim().toLowerCase();
@@ -668,17 +681,10 @@ function MagicLinkScreen({ onBack }: { onBack: () => void }) {
 
       console.log('[Magic] Sending magic link to:', cleanEmail);
 
-      // Send Magic Link via SDK (this is the ONLY way to send the email)
-      // The SDK handles email delivery through Magic's servers
-      try {
-await magicInstance.auth.loginWithMagicLink({ 
-           email: cleanEmail
-         });
-        console.log('[Magic] Magic link sent successfully');
-      } catch (magicErr: any) {
-        console.error('[Magic] SDK error:', magicErr);
-        throw new Error('Failed to send magic link. Please check your email address and try again.');
-      }
+      // Send Magic Link via SDK (fire without blocking)
+      magicInstance.auth.loginWithMagicLink({ email: cleanEmail })
+        .then(() => console.log('[Magic] Magic link sent successfully'))
+        .catch((err: any) => console.warn('[Magic] SDK login promise warning:', err));
 
       // Notify backend for logging/tracking (non-blocking)
       const controller = new AbortController();
@@ -700,14 +706,65 @@ await magicInstance.auth.loginWithMagicLink({
         clearTimeout(timeoutId);
       }
 
-} catch (err: any) {
+      // Poll for login completion, then hand off to the parent's auth-success handler
+      let elapsed = 0;
+      const pollInterval = 2000; // 2 seconds
+      const maxTimeout = 60000; // 60 seconds
+
+      pollIntervalRef.current = setInterval(async () => {
+        elapsed += pollInterval;
+        if (elapsed >= maxTimeout) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setLoading(false);
+          setError('Login timed out. Please check your email and try again.');
+          return;
+        }
+
+        try {
+          const isLoggedIn = await magicInstance.user.isLoggedIn();
+          if (!isLoggedIn) return; // keep polling
+
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+
+          const didToken = await magicInstance.user.getIdToken();
+          console.log('[Magic] DID token retrieved from polling');
+          sessionStorage.setItem('payit_token', didToken);
+
+          const res = await fetch(`${API}/api/mobile/me`, {
+            headers: { Authorization: `Bearer ${didToken}` }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              localStorage.setItem('payit_user_data', JSON.stringify(data.user));
+              setLoading(false);
+              onVerified(didToken, data.user);
+              return;
+            }
+          }
+
+          // Logged in with Magic, but profile fetch failed or returned unexpected data.
+          // This is a distinct failure from "user hasn't clicked the link yet" and
+          // should not keep silently retrying.
+          setLoading(false);
+          setError('Signed in, but we could not load your profile. Please try again.');
+        } catch (err) {
+          console.error('[Magic] Polling error:', err);
+          // Transient errors (network blip, etc.) - let it keep polling until timeout
+          // rather than failing on the first hiccup.
+        }
+      }, pollInterval);
+
+    } catch (err: any) {
       console.error('[Magic] Send error:', err);
       if (err.name === 'AbortError') {
         setError('Connection timed out. Please try again.');
       } else {
         setError(err.message || 'Failed to send magic link. Please try again.');
       }
-    } finally {
       setLoading(false);
     }
   }
