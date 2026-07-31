@@ -22,7 +22,10 @@ const initMagic = () => {
     const key = import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY || 'pk_live_899F70AD5418D368';
     try {
       magic = new window.Magic(key, {
-        network: 'mainnet' // Explicitly set network for production
+        network: 'mainnet', // Explicitly set network for production
+        locale: 'en_US',
+        // CRITICAL: Magic Link redirect URI - where Magic redirects after email link click
+        extensions: []
       });
       console.log('[Magic] SDK initialized successfully with key:', key.substring(0, 15) + '...', 'Network: mainnet');
     } catch (e) {
@@ -95,15 +98,55 @@ export default function App() {
   const [bizSegment, setBizSegment] = useState<'bank' | 'crypto'>('bank');
   const [accountType, setAccountType] = useState<'personal' | 'business'>('personal');
 
-  // On mount: check for existing session
+  // On mount: check for existing session or Magic redirect callback
   useEffect(() => {
-    const token = sessionStorage.getItem('payit_token');
-    if (token) {
-      setAuthToken(token);
-      checkReturningUser(token);
-    } else {
-      setTimeout(() => setScreen('welcome'), 2200);
-    }
+    const checkAuthStatus = async () => {
+      // Check if Magic SDK is loaded
+      const magicInstance = initMagic();
+      if (magicInstance) {
+        try {
+          // Check if user is logged in (handles Magic Link callback automatically)
+          const isLoggedIn = await magicInstance.user.isLoggedIn();
+          console.log('[Magic] Initial auth check - logged in:', isLoggedIn);
+          
+          if (isLoggedIn) {
+            // User completed Magic Link authentication
+            const didToken = await magicInstance.user.getIdToken();
+            console.log('[Magic] DID token retrieved from callback');
+            sessionStorage.setItem('payit_token', didToken);
+            setAuthToken(didToken);
+            
+            // Fetch user profile
+            const res = await fetch(`${API}/api/mobile/me`, {
+              headers: { Authorization: `Bearer ${didToken}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.user) {
+                setUser(data.user);
+                localStorage.setItem('payit_user_data', JSON.stringify(data.user));
+                const isVerified = data.user.is_verified === 1 || data.user.personal_kyc_status === 'verified';
+                setScreen(isVerified ? 'home' : 'account_type');
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[Magic] Auth check error:', err);
+        }
+      }
+      
+      // Fallback: check session storage
+      const token = sessionStorage.getItem('payit_token');
+      if (token) {
+        setAuthToken(token);
+        checkReturningUser(token);
+      } else {
+        setTimeout(() => setScreen('welcome'), 2200);
+      }
+    };
+    
+    checkAuthStatus();
   }, []);
 
   async function checkReturningUser(token: string) {
@@ -744,231 +787,55 @@ function MagicVerifyScreen({ onVerified, onBack }: {
   onVerified: (token: string, user: UserData) => void;
   onBack: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [showPinInput, setShowPinInput] = useState(false);
-  const [pin, setPin] = useState('');
+  const [status, setStatus] = useState<'waiting' | 'checking' | 'success'>('waiting');
   const [error, setError] = useState('');
-  const [pinMode, setPinMode] = useState<'verify' | 'setup'>('verify');
-  const [pendingUser, setPendingUser] = useState<UserData | null>(null);
-  const [didToken, setDidToken] = useState<string>('');
 
   const email = sessionStorage.getItem('payit_magic_email') || 'your email';
-  const cleanEmail = email.trim().toLowerCase();
 
-  async function handleStartPinVerification() {
-    console.log('[Magic] Starting PIN verification flow...');
-    setLoading(true);
-    setError('');
-
-    try {
+  // Auto-check Magic Link status every 3 seconds
+  useEffect(() => {
+    const checkInterval = setInterval(async () => {
       const magicInstance = initMagic();
-      if (!magicInstance) {
-        console.error('[Magic] SDK not initialized');
-        throw new Error('Magic SDK not loaded. Please refresh the page.');
-      }
-
-      console.log('[Magic] Checking if user is logged in...');
+      if (!magicInstance) return;
       
-      // Check if user is logged in with timeout
-      const isLoggedInPromise = magicInstance.user.isLoggedIn();
-      const timeoutPromise = new Promise<boolean>((_, reject) => 
-        setTimeout(() => reject(new Error('Login check timed out. Please click the magic link in your email first.')), 10000)
-      );
-      
-      const isLoggedIn = await Promise.race([isLoggedInPromise, timeoutPromise]);
-      console.log('[Magic] Login status:', isLoggedIn);
-      
-      if (!isLoggedIn) {
-        setError('Please click the magic link in your email first, then come back and click this button.');
-        setLoading(false);
-        return;
-      }
-
-      console.log('[Magic] User is authenticated, retrieving token...');
-      const tokenPromise = magicInstance.user.getIdToken();
-      const tokenTimeoutPromise = new Promise<string>((_, reject) => 
-        setTimeout(() => reject(new Error('Token retrieval timed out')), 10000)
-      );
-      
-      const token = await Promise.race([tokenPromise, tokenTimeoutPromise]);
-      
-      if (!token) {
-        console.error('[Magic] No token received');
-        throw new Error('Failed to retrieve authentication token.');
-      }
-
-      console.log('[Magic] DID token received successfully, length:', token.length);
-      setDidToken(token);
-      sessionStorage.setItem('payit_token', token);
-
-      // Check if user exists and needs PIN
-      console.log('[Magic] Fetching user profile from:', `${API}/api/mobile/me`);
-      const apiUrl = `${API}/api/mobile/me`;
-      console.log('[Magic] Full API URL:', apiUrl);
-      
-      const res = await fetch(apiUrl, {
-        method: 'GET',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        mode: 'cors'
-      });
-      
-      console.log('[Magic] API response status:', res.status);
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log('[Magic] API response data:', data);
-        
-        if (data.success && data.user) {
-          setPendingUser(data.user);
-          localStorage.setItem('payit_user_data', JSON.stringify(data.user));
+      try {
+        const isLoggedIn = await magicInstance.user.isLoggedIn();
+        if (isLoggedIn && status === 'waiting') {
+          setStatus('checking');
+          const didToken = await magicInstance.user.getIdToken();
+          console.log('[Magic] Auto-detected successful login');
           
-          if (data.user.pin_hash) {
-            console.log('[Magic] User has PIN, setting verify mode');
-            setPinMode('verify');
-          } else {
-            console.log('[Magic] User needs to setup PIN');
-            setPinMode('setup');
-          }
-          setShowPinInput(true);
-          return;
-        }
-      } else {
-        console.error('[Magic] API error response:', await res.text());
-      }
-      
-      // New user - setup PIN
-      console.log('[Magic] New user flow - setup PIN');
-      setPinMode('setup');
-      setShowPinInput(true);
-      
-    } catch (err: any) {
-      console.error('[Magic] Authentication error:', err);
-      
-      if (err.message?.includes('timed out') || err.message?.includes('timeout')) {
-        setError(err.message || 'Authentication timed out. Please click the magic link in your email.');
-      } else if (err.message?.includes('denied') || err.message?.includes('canceled')) {
-        setError('Please click the magic link in your email to continue.');
-      } else {
-        setError(err.message || 'Authentication failed. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handlePinSubmit(digit: string) {
-    if (loading) return;
-    setError('');
-    const nextPin = pin + digit;
-    if (nextPin.length > 6) return;
-    setPin(nextPin);
-
-    if (nextPin.length >= 4) {
-      setLoading(true);
-      const magicToken = didToken || `payit_email_${cleanEmail}`;
-
-      if (pinMode === 'verify') {
-        try {
-          const res = await fetch(`${API}/api/mobile/auth/verify-pin`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, pin: nextPin })
+          sessionStorage.setItem('payit_token', didToken);
+          
+          // Fetch user data
+          const res = await fetch(`${API}/api/mobile/me`, {
+            headers: { Authorization: `Bearer ${didToken}` }
           });
-          const data = await res.json();
-          if (data.success && data.pin_verified) {
-            const finalUser = data.user || pendingUser || { email: cleanEmail, is_verified: 1 };
-            localStorage.setItem('payit_user_data', JSON.stringify(finalUser));
-            onVerified(magicToken, finalUser);
-            return;
-          } else if (data.requires_pin_setup) {
-            setPinMode('setup');
-            setPin('');
-            setError('Please create your 6-digit Security PIN.');
-          } else {
-            setError(data.error || 'Incorrect Security PIN. Access denied.');
-            setPin('');
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              const finalUser = data.user;
+              localStorage.setItem('payit_user_data', JSON.stringify(finalUser));
+              setStatus('success');
+              setTimeout(() => onVerified(didToken, finalUser), 800);
+              return;
+            }
           }
-        } catch (_) {
-          setError('Failed to verify PIN. Please try again.');
-          setPin('');
-        } finally {
-          setLoading(false);
+          
+          // New user - no backend profile yet
+          const fallbackUser = { email, is_verified: 0 };
+          localStorage.setItem('payit_user_data', JSON.stringify(fallbackUser));
+          setStatus('success');
+          setTimeout(() => onVerified(didToken, fallbackUser), 800);
         }
-      } else {
-        try {
-          const res = await fetch(`${API}/api/mobile/auth/set-pin`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, pin: nextPin })
-          });
-          const data = await res.json();
-          if (data.success) {
-            const finalUser = pendingUser || { email: cleanEmail, is_verified: 1 };
-            localStorage.setItem('payit_user_data', JSON.stringify(finalUser));
-            onVerified(magicToken, finalUser);
-            return;
-          } else {
-            setError(data.error || 'Failed to save Security PIN.');
-            setPin('');
-          }
-        } catch (_) {
-          setError('Failed to save Security PIN.');
-          setPin('');
-        } finally {
-          setLoading(false);
-        }
+      } catch (err: any) {
+        console.log('[Magic] Check cycle:', err.message);
       }
-    }
-  }
-
-  function handleKeyDelete() {
-    setPin(prev => prev.slice(0, -1));
-    setError('');
-  }
-
-  if (showPinInput) {
-    return (
-      <div className="flex-1 flex flex-col px-5 overflow-hidden">
-        <div className="pt-2 pb-4 shrink-0">
-          <button onClick={() => setShowPinInput(false)} className="w-9 h-9 rounded-[12px] bg-white border border-[#E5E7EB] flex items-center justify-center shadow-sm">
-            <ArrowLeft size={17} color={INK} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <div className="flex-1 flex flex-col justify-center items-center text-center gap-4">
-          <div className="w-[58px] h-[58px] rounded-[18px] bg-[#ECFDF5] flex items-center justify-center">
-            <Lock size={26} color={FOREST} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-extrabold text-[#0F172A]">
-              {pinMode === 'verify' ? 'Enter Security Key' : 'Create 6-Digit PIN'}
-            </h2>
-            <p className="text-[12px] text-[#64748B] mt-1 max-w-[260px]">
-              {pinMode === 'verify' 
-                ? `Enter your 6-digit Security PIN to access account (${email})`
-                : `Create a secret 6-digit key to protect your account (${email})`}
-            </p>
-          </div>
-
-          <PinDots length={pin.length} />
-
-          {error && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-[#FDECEC] rounded-[12px] animate-fadeIn">
-              <AlertCircle size={14} color={DANGER} />
-              <span className="text-[12px] text-[#DC4C4C] font-semibold">{error}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="shrink-0 pb-6">
-          <PinKeypad onPress={handlePinSubmit} onDelete={handleKeyDelete} />
-        </div>
-      </div>
-    );
-  }
+    }, 3000);
+    
+    return () => clearInterval(checkInterval);
+  }, [status, email, onVerified]);
 
   return (
     <div className="flex-1 flex flex-col px-5 overflow-hidden">
@@ -980,47 +847,64 @@ function MagicVerifyScreen({ onVerified, onBack }: {
 
       <div className="flex-1 flex flex-col justify-center gap-6">
         <div>
-          <div className="w-[52px] h-[52px] rounded-[16px] bg-[#ECFDF5] flex items-center justify-center mb-4 animate-pulse">
-            <Mail size={24} color={FOREST} />
+          <div className={`w-[52px] h-[52px] rounded-[16px] flex items-center justify-center mb-4 ${
+            status === 'success' ? 'bg-[#ECFDF5]' : 'bg-[#ECFDF5] animate-pulse'
+          }`}>
+            {status === 'success' ? (
+              <CheckCircle2 size={24} color={FOREST} />
+            ) : (
+              <Mail size={24} color={FOREST} />
+            )}
           </div>
-          <h2 className="text-[24px] font-extrabold text-[#0F172A]">Check Your Email!</h2>
+          <h2 className="text-[24px] font-extrabold text-[#0F172A]">
+            {status === 'success' ? '✓ Authentication Complete!' : 'Check Your Email!'}
+          </h2>
           <p className="text-[13px] text-[#64748B] mt-1.5 leading-relaxed">
-            We sent a secure login link to <strong className="text-[#0F172A]">{email}</strong>.
+            {status === 'success'
+              ? 'Successfully authenticated. Redirecting to your account...'
+              : `We sent a secure login link to ${email}. Click the link to continue.`}
           </p>
         </div>
 
-        {/* Step-by-step instructions */}
-        <div className="p-4 bg-gradient-to-br from-[#ECFDF5] to-[#F0FDF4] border-2 border-[#10B981] rounded-[18px] space-y-3">
-          <p className="text-[12px] font-bold text-[#047857] uppercase tracking-wider">📧 Next Steps:</p>
-          <div className="space-y-2">
-            <div className="flex items-start gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">1</span>
-              <p className="text-[12px] text-[#0F172A] leading-relaxed">Check your email inbox (and spam folder)</p>
+        {status === 'waiting' && (
+          <>
+            {/* Step-by-step instructions */}
+            <div className="p-4 bg-gradient-to-br from-[#ECFDF5] to-[#F0FDF4] border-2 border-[#10B981] rounded-[18px] space-y-3">
+              <p className="text-[12px] font-bold text-[#047857] uppercase tracking-wider">📧 Next Steps:</p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">1</span>
+                  <p className="text-[12px] text-[#0F172A] leading-relaxed">Check your email inbox (and spam folder)</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">2</span>
+                  <p className="text-[12px] text-[#0F172A] leading-relaxed">Click the magic link button in the email</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">3</span>
+                  <p className="text-[12px] text-[#0F172A] leading-relaxed">You'll be automatically signed in (stay on this page)</p>
+                </div>
+              </div>
             </div>
-            <div className="flex items-start gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">2</span>
-              <p className="text-[12px] text-[#0F172A] leading-relaxed">Click the magic link button in the email</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">3</span>
-              <p className="text-[12px] text-[#0F172A] leading-relaxed">Return here and click "I Clicked the Link" below</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="p-4 bg-[#FEF3C7] border border-[#FDE68A] rounded-[16px] space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#92400E]">
-            <AlertCircle size={14} color="#F59E0B" />
-            <span>Didn't receive the email?</span>
-          </div>
-          <p className="text-[11px] text-[#78350F] leading-relaxed">
-            Check your spam folder or wait 1-2 minutes. The email is sent by Magic (magic.link) and may take a moment to arrive.
-          </p>
-        </div>
-      </div>
+            <div className="p-4 bg-[#FEF3C7] border border-[#FDE68A] rounded-[16px] space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#92400E]">
+                <Loader2 size={14} color="#F59E0B" className="animate-spin" />
+                <span>Waiting for email link click...</span>
+              </div>
+              <p className="text-[11px] text-[#78350F] leading-relaxed">
+                Didn't receive the email? Check your spam folder or wait 1-2 minutes. The email is sent by Magic (magic.link).
+              </p>
+            </div>
+          </>
+        )}
 
-      <div className="shrink-0 pb-4">
-        <GreenBtn label="I Clicked the Link ✓" onClick={handleStartPinVerification} loading={loading} icon={<CheckCircle2 size={16} />} />
+        {error && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-[#FDECEC] rounded-[12px]">
+            <AlertCircle size={14} color={DANGER} />
+            <span className="text-[12px] text-[#DC4C4C] font-medium">{error}</span>
+          </div>
+        )}
       </div>
     </div>
   );
