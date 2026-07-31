@@ -16,6 +16,7 @@ async function sendJson(res, statusCode, payload, reqOrigin = '*') {
     'https://payitng.xyz',
     'https://www.payitng.xyz',
     'https://payitxyz.netlify.app',
+    'https://payiit.netlify.app',
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173'
@@ -197,6 +198,7 @@ module.exports = async function handleMobileApi(req, res, requestUrl) {
       'https://payitng.xyz',
       'https://www.payitng.xyz',
       'https://payitxyz.netlify.app',
+      'https://payiit.netlify.app',
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:5173'
