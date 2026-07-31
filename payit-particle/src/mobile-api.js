@@ -10,18 +10,18 @@ const walletManager = require('./wallet');
 const chainConfig = require('./chain-config');
 const logger = require('./logger');
 
+// Shared CORS allowed origins - must be kept in sync across all functions
+const ALLOWED_ORIGINS = [
+  'https://payitng.xyz',
+  'https://www.payitng.xyz',
+  'https://payiit.netlify.app',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173'
+];
+
 async function sendJson(res, statusCode, payload, reqOrigin = '*') {
-  // Allowed origins for CORS - updated 2026-07-31
-  const allowedOrigins = [
-    'https://payitng.xyz',
-    'https://www.payitng.xyz',
-    'https://payitxyz.netlify.app',
-    'https://payiit.netlify.app',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173'
-  ];
-  const origin = allowedOrigins.includes(reqOrigin) ? reqOrigin : '*';
+  const origin = ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : '*';
 
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -194,18 +194,9 @@ async function getOrProvisionReceiveMethods(telegramId, context = 'personal') {
 module.exports = async function handleMobileApi(req, res, requestUrl) {
   // CORS Preflight
   if (req.method === 'OPTIONS') {
-    const allowedOrigins = [
-      'https://payitng.xyz',
-      'https://www.payitng.xyz',
-      'https://payitxyz.netlify.app',
-      'https://payiit.netlify.app',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:5173'
-    ];
     const reqOrigin = req.headers.origin || req.headers.referer || '*';
     console.log('[CORS] Preflight request from:', reqOrigin);
-    const origin = allowedOrigins.includes(reqOrigin) ? reqOrigin : allowedOrigins[0];
+    const origin = ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : '*';
     console.log('[CORS] Using origin:', origin);
     
     res.writeHead(204, {
