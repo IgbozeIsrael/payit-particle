@@ -19,7 +19,11 @@ declare global {
 let magic: any = null;
 const initMagic = () => {
   if (!magic && typeof window !== 'undefined' && window.Magic) {
-    const key = import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY || 'pk_live_899F70AD5418D368';
+    const key = import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY;
+    if (!key) {
+      console.error('[Magic] VITE_MAGIC_PUBLISHABLE_KEY is not set. Please add it to your environment variables.');
+      return null;
+    }
     try {
       magic = new window.Magic(key, {
         network: 'mainnet', // Explicitly set network for production
@@ -54,11 +58,15 @@ const SLATE = '#64748B';
 const DANGER = '#DC4C4C';
 const AMBER = '#F59E0B';
 
-const API = import.meta.env.VITE_API_URL || 'https://payit-particle-payit-particle.up.railway.app';
+const API_URL = import.meta.env.VITE_API_URL;
+if (!API_URL) {
+  console.error('[PayIT] VITE_API_URL is not set. Please add it to your environment variables.');
+}
+const API = API_URL;
 
 /* ─── App State Types ─────────────────────────────────────────────────────── */
 type Screen =
-  | 'splash' | 'welcome' | 'magic_link' | 'magic_verify'
+  | 'splash' | 'welcome' | 'magic_link'
   | 'account_type' | 'kyc_personal' | 'kyb_business' | 'kyc_success' | 'pin_setup'
   | 'home' | 'add_money' | 'send_money' | 'split_bill' | 'bills' | 'savings'
   | 'invoices' | 'customers' | 'notifications' | 'payai' | 'business' | 'profile' | 'profile_sync'
@@ -264,13 +272,7 @@ export default function App() {
       {/* ── Onboarding Screens ───────────────────────────────────── */}
       {screen === 'splash' && <SplashScreen />}
       {screen === 'welcome' && <WelcomeScreen onContinue={() => setScreen('magic_link')} />}
-      {screen === 'magic_link' && <MagicLinkScreen onSent={() => setScreen('magic_verify')} onBack={() => setScreen('welcome')} />}
-      {screen === 'magic_verify' && (
-        <MagicVerifyScreen
-          onVerified={(token, userData) => handleAuthSuccess(token, userData)}
-          onBack={() => setScreen('magic_link')}
-        />
-      )}
+{screen === 'magic_link' && <MagicLinkScreen onBack={() => setScreen('welcome')} />}
       {screen === 'account_type' && (
         <AccountTypeScreen
           selected={accountType}
@@ -317,7 +319,7 @@ export default function App() {
       {/* ── Main App Screens (with bottom nav) ──────────────────── */}
       {(['home', 'add_money', 'send_money', 'split_bill', 'bills', 'savings',
          'invoices', 'customers', 'notifications', 'cards', 'payai', 'business', 'profile', 'profile_sync', 'security_pin'] as Screen[]).includes(screen)
-        && !['pin_setup', 'kyc_success', 'account_type', 'kyc_personal', 'kyb_business', 'magic_link', 'magic_verify', 'welcome', 'splash', 'security_pin'].includes(screen) && (
+        && !['pin_setup', 'kyc_success', 'account_type', 'kyc_personal', 'kyb_business', 'magic_link', 'welcome', 'splash', 'security_pin'].includes(screen) && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Screen content */}
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -660,7 +662,7 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function MagicLinkScreen({ onSent, onBack }: { onSent: () => void; onBack: () => void }) {
+function MagicLinkScreen({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -690,10 +692,9 @@ function MagicLinkScreen({ onSent, onBack }: { onSent: () => void; onBack: () =>
       // Send Magic Link via SDK (this is the ONLY way to send the email)
       // The SDK handles email delivery through Magic's servers
       try {
-        await magicInstance.auth.loginWithMagicLink({ 
-          email: cleanEmail,
-          showUI: false // Don't show Magic's default UI since we have our own
-        });
+await magicInstance.auth.loginWithMagicLink({ 
+           email: cleanEmail
+         });
         console.log('[Magic] Magic link sent successfully');
       } catch (magicErr: any) {
         console.error('[Magic] SDK error:', magicErr);
@@ -720,10 +721,7 @@ function MagicLinkScreen({ onSent, onBack }: { onSent: () => void; onBack: () =>
         clearTimeout(timeoutId);
       }
 
-      // Success - move to verification screen
-      onSent();
-      
-    } catch (err: any) {
+} catch (err: any) {
       console.error('[Magic] Send error:', err);
       if (err.name === 'AbortError') {
         setError('Connection timed out. Please try again.');
@@ -778,133 +776,6 @@ function MagicLinkScreen({ onSent, onBack }: { onSent: () => void; onBack: () =>
 
       <div className="shrink-0 pb-4">
         <GreenBtn label="Send Magic Link" onClick={handleSend} loading={loading} icon={<Send size={15} />} />
-      </div>
-    </div>
-  );
-}
-
-function MagicVerifyScreen({ onVerified, onBack }: {
-  onVerified: (token: string, user: UserData) => void;
-  onBack: () => void;
-}) {
-  const [status, setStatus] = useState<'waiting' | 'checking' | 'success'>('waiting');
-  const [error, setError] = useState('');
-
-  const email = sessionStorage.getItem('payit_magic_email') || 'your email';
-
-  // Auto-check Magic Link status every 3 seconds
-  useEffect(() => {
-    const checkInterval = setInterval(async () => {
-      const magicInstance = initMagic();
-      if (!magicInstance) return;
-      
-      try {
-        const isLoggedIn = await magicInstance.user.isLoggedIn();
-        if (isLoggedIn && status === 'waiting') {
-          setStatus('checking');
-          const didToken = await magicInstance.user.getIdToken();
-          console.log('[Magic] Auto-detected successful login');
-          
-          sessionStorage.setItem('payit_token', didToken);
-          
-          // Fetch user data
-          const res = await fetch(`${API}/api/mobile/me`, {
-            headers: { Authorization: `Bearer ${didToken}` }
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.user) {
-              const finalUser = data.user;
-              localStorage.setItem('payit_user_data', JSON.stringify(finalUser));
-              setStatus('success');
-              setTimeout(() => onVerified(didToken, finalUser), 800);
-              return;
-            }
-          }
-          
-          // New user - no backend profile yet
-          const fallbackUser = { email, is_verified: 0 };
-          localStorage.setItem('payit_user_data', JSON.stringify(fallbackUser));
-          setStatus('success');
-          setTimeout(() => onVerified(didToken, fallbackUser), 800);
-        }
-      } catch (err: any) {
-        console.log('[Magic] Check cycle:', err.message);
-      }
-    }, 3000);
-    
-    return () => clearInterval(checkInterval);
-  }, [status, email, onVerified]);
-
-  return (
-    <div className="flex-1 flex flex-col px-5 overflow-hidden">
-      <div className="pt-2 pb-4 shrink-0">
-        <button onClick={onBack} className="w-9 h-9 rounded-[12px] bg-white border border-[#E5E7EB] flex items-center justify-center shadow-sm">
-          <ArrowLeft size={17} color={INK} strokeWidth={2.2} />
-        </button>
-      </div>
-
-      <div className="flex-1 flex flex-col justify-center gap-6">
-        <div>
-          <div className={`w-[52px] h-[52px] rounded-[16px] flex items-center justify-center mb-4 ${
-            status === 'success' ? 'bg-[#ECFDF5]' : 'bg-[#ECFDF5] animate-pulse'
-          }`}>
-            {status === 'success' ? (
-              <CheckCircle2 size={24} color={FOREST} />
-            ) : (
-              <Mail size={24} color={FOREST} />
-            )}
-          </div>
-          <h2 className="text-[24px] font-extrabold text-[#0F172A]">
-            {status === 'success' ? '✓ Authentication Complete!' : 'Check Your Email!'}
-          </h2>
-          <p className="text-[13px] text-[#64748B] mt-1.5 leading-relaxed">
-            {status === 'success'
-              ? 'Successfully authenticated. Redirecting to your account...'
-              : `We sent a secure login link to ${email}. Click the link to continue.`}
-          </p>
-        </div>
-
-        {status === 'waiting' && (
-          <>
-            {/* Step-by-step instructions */}
-            <div className="p-4 bg-gradient-to-br from-[#ECFDF5] to-[#F0FDF4] border-2 border-[#10B981] rounded-[18px] space-y-3">
-              <p className="text-[12px] font-bold text-[#047857] uppercase tracking-wider">📧 Next Steps:</p>
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">1</span>
-                  <p className="text-[12px] text-[#0F172A] leading-relaxed">Check your email inbox (and spam folder)</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">2</span>
-                  <p className="text-[12px] text-[#0F172A] leading-relaxed">Click the magic link button in the email</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#10B981] text-white text-[10px] font-bold shrink-0 mt-0.5">3</span>
-                  <p className="text-[12px] text-[#0F172A] leading-relaxed">You'll be automatically signed in (stay on this page)</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-[#FEF3C7] border border-[#FDE68A] rounded-[16px] space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#92400E]">
-                <Loader2 size={14} color="#F59E0B" className="animate-spin" />
-                <span>Waiting for email link click...</span>
-              </div>
-              <p className="text-[11px] text-[#78350F] leading-relaxed">
-                Didn't receive the email? Check your spam folder or wait 1-2 minutes. The email is sent by Magic (magic.link).
-              </p>
-            </div>
-          </>
-        )}
-
-        {error && (
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-[#FDECEC] rounded-[12px]">
-            <AlertCircle size={14} color={DANGER} />
-            <span className="text-[12px] text-[#DC4C4C] font-medium">{error}</span>
-          </div>
-        )}
       </div>
     </div>
   );
