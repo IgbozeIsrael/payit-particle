@@ -1,6 +1,6 @@
 {
   "name": "payit-particle",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "PayIT on Particle Network Universal Accounts and Arbitrum Sepolia",
   "engines": {
     "node": ">=20"
