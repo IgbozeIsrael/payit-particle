@@ -193,10 +193,22 @@ async function getOrProvisionReceiveMethods(telegramId, context = 'personal') {
 module.exports = async function handleMobileApi(req, res, requestUrl) {
   // CORS Preflight
   if (req.method === 'OPTIONS') {
+    const allowedOrigins = [
+      'https://payitng.xyz',
+      'https://www.payitng.xyz',
+      'https://payitxyz.netlify.app',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5173'
+    ];
+    const reqOrigin = req.headers.origin || req.headers.referer || '*';
+    const origin = allowedOrigins.includes(reqOrigin) ? reqOrigin : allowedOrigins[0];
+    
     res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Profile-ID',
+      'Access-Control-Allow-Credentials': 'true',
     });
     return res.end();
   }
