@@ -204,7 +204,9 @@ module.exports = async function handleMobileApi(req, res, requestUrl) {
       'http://localhost:5173'
     ];
     const reqOrigin = req.headers.origin || req.headers.referer || '*';
+    console.log('[CORS] Preflight request from:', reqOrigin);
     const origin = allowedOrigins.includes(reqOrigin) ? reqOrigin : allowedOrigins[0];
+    console.log('[CORS] Using origin:', origin);
     
     res.writeHead(204, {
       'Access-Control-Allow-Origin': origin,

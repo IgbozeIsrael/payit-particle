@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Magic } from 'magic-sdk';
 import {
   Bell, Eye, EyeOff, ArrowUpRight, ArrowDownLeft, Plus, Send, RefreshCw,
   Shield, Check, Copy, ChevronRight, Building2, Users, FileText,
@@ -8,24 +9,13 @@ import {
   TrendingUp, Wifi, MoreHorizontal, Loader2, LogOut, Settings
 } from 'lucide-react';
 
-// Declare window.Magic from CDN
-declare global {
-  interface Window {
-    Magic: any;
-  }
-}
-
-// Initialize Magic SDK with publishable key (using CDN global)
+// Initialize Magic SDK with publishable key (using npm package)
 let magic: any = null;
 const initMagic = () => {
-  if (!magic && typeof window !== 'undefined' && window.Magic) {
-    const key = import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY;
-    if (!key) {
-      console.error('[Magic] VITE_MAGIC_PUBLISHABLE_KEY is not set. Please add it to your environment variables.');
-      return null;
-    }
+  if (!magic) {
+    const key = import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY || 'pk_live_899F70AD5418D368';
     try {
-      magic = new window.Magic(key, {
+      magic = new Magic(key, {
         network: 'mainnet', // Explicitly set network for production
         locale: 'en_US',
         // CRITICAL: Magic Link redirect URI - where Magic redirects after email link click
@@ -39,14 +29,6 @@ const initMagic = () => {
   return magic;
 };
 
-// Initialize Magic SDK on page load
-if (typeof window !== 'undefined') {
-  window.addEventListener('DOMContentLoaded', () => {
-    console.log('[Magic] Page loaded, initializing SDK...');
-    initMagic();
-  });
-}
-
 /* ─── Design Tokens ─────────────────────────────────────────────────────── */
 const INK = '#0F172A';
 const FOREST = '#047857';
@@ -58,10 +40,7 @@ const SLATE = '#64748B';
 const DANGER = '#DC4C4C';
 const AMBER = '#F59E0B';
 
-const API_URL = import.meta.env.VITE_API_URL;
-if (!API_URL) {
-  console.error('[PayIT] VITE_API_URL is not set. Please add it to your environment variables.');
-}
+const API_URL = import.meta.env.VITE_API_URL || 'https://payit-particle-payit-particle.up.railway.app';
 const API = API_URL;
 
 /* ─── App State Types ─────────────────────────────────────────────────────── */
